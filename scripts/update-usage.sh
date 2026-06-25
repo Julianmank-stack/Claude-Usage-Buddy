@@ -25,13 +25,34 @@ if [[ $# -ge 1 ]]; then
   else
     frac="$arg"
   fi
-elif command -v ccusage >/dev/null 2>&1; then
-  # Best-effort: derive a 0..1 "remaining" from ccusage's JSON if it exposes a
-  # percent-used field. Adjust the jq path to match your ccusage version.
-  if command -v jq >/dev/null 2>&1; then
-    used_pct=$(ccusage --json 2>/dev/null | jq -r '.percentUsed // empty' || true)
-    if [[ -n "$used_pct" ]]; then
-      frac=$(awk -v u="$used_pct" 'BEGIN { printf "%.4f", 1 - u/100 }')
+elif command -v "${CCUSAGE_BIN:-ccusage}" >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+  # Derive a 0..1 "remaining" from ccusage's 5-hour billing blocks.
+  #
+  # ccusage groups Claude Code activity into rolling 5-hour blocks. We read the
+  # *active* block's token total and compare it to a limit:
+  #   * CCUSAGE_TOKEN_LIMIT, if you set it (your exact per-window token budget), or
+  #   * "max" — your heaviest completed block, so the buddy self-calibrates and
+  #     drains as this session approaches your typical peak.
+  # remaining = 1 - used/limit.
+  CCUSAGE_BIN="${CCUSAGE_BIN:-ccusage}"
+  json=$("$CCUSAGE_BIN" blocks --json 2>/dev/null || true)
+  if [[ -n "$json" ]]; then
+    # Tokens used in the current (active) block; 0 if nothing is active.
+    used=$(printf '%s' "$json" | jq -r '[.blocks[]? | select(.isActive==true) | .totalTokens] | (.[0] // 0)')
+
+    if [[ -n "${CCUSAGE_TOKEN_LIMIT:-}" ]]; then
+      limit="$CCUSAGE_TOKEN_LIMIT"
+    else
+      # Heaviest completed (non-active, non-gap) block.
+      limit=$(printf '%s' "$json" | jq -r '[.blocks[]? | select(.isActive!=true and .isGap!=true) | .totalTokens] | (max // empty)')
+    fi
+
+    if [[ -z "${limit:-}" || "$limit" == "0" || "$limit" == "null" ]]; then
+      echo "ccusage: no token limit yet (need either a completed block or CCUSAGE_TOKEN_LIMIT)." >&2
+      echo "Raw ccusage JSON follows so you can pin a limit:" >&2
+      printf '%s\n' "$json" | jq '.blocks[]? | {isActive, isGap, totalTokens}' >&2 || true
+    else
+      frac=$(awk -v u="$used" -v l="$limit" 'BEGIN { r = 1 - u/l; if (r<0) r=0; if (r>1) r=1; printf "%.4f", r }')
     fi
   fi
 fi

@@ -38,6 +38,30 @@ swift build -c release
 .build/release/ClaudeUsageBuddy
 ```
 
+## Always on (auto-start at login)
+
+To keep the buddy in your menu bar permanently — starting at login and
+relaunching itself if it ever quits:
+
+```bash
+./scripts/install-autostart.sh
+```
+
+This builds a release binary and installs two `launchd` LaunchAgents:
+
+- `com.claudeusagebuddy.agent` — the buddy itself (`RunAtLoad` + `KeepAlive`).
+- `com.claudeusagebuddy.refresh` — re-derives your usage every couple of
+  minutes (see below) so the buddy live-updates.
+
+To stop everything and remove auto-start:
+
+```bash
+./scripts/uninstall-autostart.sh
+```
+
+(Because `KeepAlive` is on, choosing **Quit** from the menu just relaunches it —
+use the uninstall script to fully stop it.)
+
 ## Feeding it real usage
 
 The app reads a remaining-usage fraction from:
@@ -61,12 +85,37 @@ A helper writes it for you:
 ```bash
 ./scripts/update-usage.sh 42%     # set it directly
 ./scripts/update-usage.sh 0.42    # or as a fraction
-./scripts/update-usage.sh         # best-effort from `ccusage`, if installed
+./scripts/update-usage.sh         # live: derive it from `ccusage`
 ```
 
 Run that on a schedule (cron, `launchd`, or a simple loop) to keep the buddy in
 sync with your real usage. The app re-checks the file every few seconds, so
-updates show up almost immediately.
+updates show up almost immediately. `install-autostart.sh` already sets up the
+`launchd` timer for you.
+
+### Live usage via ccusage
+
+With no argument, the helper reads your **Claude Code** activity through
+[`ccusage`](https://github.com/ryoppippi/ccusage) (install it with
+`npm i -g ccusage`; you also need `jq`). It looks at ccusage's rolling 5-hour
+billing blocks and computes:
+
+```
+remaining = 1 − (tokens used in the active block ÷ limit)
+```
+
+The limit is your heaviest *completed* block, so the buddy self-calibrates and
+fades as the current session approaches your typical peak. To pin an exact
+per-window token budget instead, set `CCUSAGE_TOKEN_LIMIT`:
+
+```bash
+CCUSAGE_TOKEN_LIMIT=2000000 ./scripts/update-usage.sh
+```
+
+Note: this tracks **Claude Code token usage**, which is *not* the same as the
+plan-usage percentage shown on claude.ai's account page — there's no public API
+for that number. If ccusage lives somewhere unusual, point at it with
+`CCUSAGE_BIN`.
 
 ## How the fade works
 
