@@ -10,7 +10,8 @@ faint, tired ghost — a quick glance tells you how much you've got left.
 ## What it looks like
 
 - Lives in the macOS menu bar (no Dock icon, no window).
-- A little space-invader-style Claude buddy in Claude's clay color.
+- A little pixel-art Claude buddy — the rounded clay creature with two eyes and
+  stubby legs — in Claude's clay color.
 - Opacity tracks remaining usage; it also drifts slightly gray as it empties.
 - Click it for a menu showing the exact percentage and the data source.
 

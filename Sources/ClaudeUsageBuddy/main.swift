@@ -2,22 +2,26 @@ import AppKit
 
 // MARK: - Buddy pixel art
 //
-// A little space-invader-style "Claude buddy". 1 = filled pixel, 0 = empty.
-// Two "eyes" are punched out of the head as gaps. The whole thing is drawn in
-// Claude's clay/terracotta color and fades toward transparent as usage drains.
+// The "Claude buddy" from the screenshot: a chunky, rounded clay creature with
+// two square eyes up top and four little stub legs at the bottom. 1 = filled
+// (clay) pixel, 0 = empty/transparent; the two eyes are punched out as gaps so
+// the dark menu bar shows through. The whole thing is drawn in Claude's
+// clay/terracotta color and fades toward a faint ghost as usage drains.
 enum Buddy {
-    // 13 columns wide. Read top -> bottom.
+    // 14 columns wide. Read top -> bottom. Modeled on the attached screenshot.
     static let pixels: [[Int]] = [
-        [0,0,0,1,0,0,0,0,0,1,0,0,0], // ears
-        [0,0,1,1,1,1,1,1,1,1,1,0,0], // top of head
-        [0,1,1,1,1,1,1,1,1,1,1,1,0],
-        [0,1,1,1,0,1,1,1,0,1,1,1,0], // eyes (holes)
-        [0,1,1,1,1,1,1,1,1,1,1,1,0],
-        [1,1,1,1,1,1,1,1,1,1,1,1,1], // arms out
-        [1,1,1,1,1,1,1,1,1,1,1,1,1], // arms
-        [0,1,1,1,1,1,1,1,1,1,1,1,0],
-        [0,1,1,1,1,0,0,0,1,1,1,1,0], // legs
-        [0,1,1,1,1,0,0,0,1,1,1,1,0], // legs
+        [0,0,1,1,1,1,1,1,1,1,1,1,0,0], // rounded top
+        [0,1,1,1,1,1,1,1,1,1,1,1,1,0],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,1,1,0,0,1,1,1,1,0,0,1,1,1], // eyes (holes)
+        [1,1,1,0,0,1,1,1,1,0,0,1,1,1], // eyes (holes)
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1], // bottom of body
+        [1,1,0,0,1,1,0,0,1,1,0,0,1,1], // legs
+        [1,1,0,0,1,1,0,0,1,1,0,0,1,1], // legs
     ]
 
     static var cols: Int { pixels.first?.count ?? 0 }
@@ -41,10 +45,14 @@ enum Buddy {
         let gray = NSColor(calibratedWhite: 0.6, alpha: 1.0)
         let color = clay.blended(withFraction: CGFloat(1.0 - f) * 0.45, of: gray) ?? clay
 
-        let cell = floor(height / CGFloat(rows))
-        let size = NSSize(width: cell * CGFloat(cols), height: cell * CGFloat(rows))
+        // Draw at a high internal resolution (large cells), then scale the
+        // finished image down to the menu-bar height. This keeps the pixel
+        // edges crisp instead of squishing the art into a 1px-per-cell blob.
+        let cell: CGFloat = 6
+        let pxW = cell * CGFloat(cols)
+        let pxH = cell * CGFloat(rows)
 
-        let image = NSImage(size: size)
+        let image = NSImage(size: NSSize(width: pxW, height: pxH))
         image.lockFocus()
         color.withAlphaComponent(CGFloat(alpha)).setFill()
 
@@ -58,6 +66,9 @@ enum Buddy {
         }
 
         image.unlockFocus()
+
+        // Resize to the menu-bar height, preserving aspect ratio.
+        image.size = NSSize(width: pxW * (height / pxH), height: height)
         image.isTemplate = false // keep the brand color, don't auto-tint
         return image
     }
