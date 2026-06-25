@@ -97,7 +97,7 @@ echo "Installed. The buddy is running now and will start automatically at login.
 echo "Look in the top-right of your menu bar."
 echo
 echo "Usage refresh: every ${REFRESH_INTERVAL}s via ccusage (Claude Code activity)."
-echo "  - Needs 'ccusage' on your PATH:  npm i -g ccusage   (and 'jq')."
+echo "  - No global install needed: runs ccusage via 'npx', parses with node."
 echo "  - Logs: /tmp/claude-usage-buddy-refresh.{log,err}"
 echo "  - Pin an exact per-window token budget with the CCUSAGE_TOKEN_LIMIT env"
 echo "    var; otherwise it self-calibrates against your heaviest 5-hour block."

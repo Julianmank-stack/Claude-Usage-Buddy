@@ -96,9 +96,10 @@ updates show up almost immediately. `install-autostart.sh` already sets up the
 ### Live usage via ccusage
 
 With no argument, the helper reads your **Claude Code** activity through
-[`ccusage`](https://github.com/ryoppippi/ccusage) (install it with
-`npm i -g ccusage`; you also need `jq`). It looks at ccusage's rolling 5-hour
-billing blocks and computes:
+[`ccusage`](https://github.com/ryoppippi/ccusage). No global install is needed —
+if `ccusage` isn't on your `PATH` it's run via `npx` (so you just need Node.js),
+and the JSON is parsed with `node` (no `jq` required). It looks at ccusage's
+rolling 5-hour billing blocks and computes:
 
 ```
 remaining = 1 − (tokens used in the active block ÷ limit)
