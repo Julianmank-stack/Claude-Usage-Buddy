@@ -6,24 +6,25 @@ import AppKit
 // Two "eyes" are punched out of the head as gaps. The whole thing is drawn in
 // Claude's clay/terracotta color and fades toward transparent as usage drains.
 enum Buddy {
-    // 12 columns wide. Read top -> bottom.
+    // 13 columns wide. Read top -> bottom.
     static let pixels: [[Int]] = [
-        [0,0,1,1,0,0,0,0,1,1,0,0], // antennae
-        [0,1,1,1,1,1,1,1,1,1,1,0], // shoulders / top of head
-        [1,1,1,1,1,1,1,1,1,1,1,1], // head
-        [1,1,0,0,1,1,1,1,0,0,1,1], // eyes (holes)
-        [1,1,1,1,1,1,1,1,1,1,1,1],
-        [1,1,1,1,1,1,1,1,1,1,1,1],
-        [1,1,0,1,1,1,1,1,1,0,1,1], // underside
-        [1,1,0,1,1,0,0,1,1,0,1,1], // legs
-        [1,1,0,0,1,1,1,1,0,0,1,1], // feet
+        [0,0,0,1,0,0,0,0,0,1,0,0,0], // ears
+        [0,0,1,1,1,1,1,1,1,1,1,0,0], // top of head
+        [0,1,1,1,1,1,1,1,1,1,1,1,0],
+        [0,1,1,1,0,1,1,1,0,1,1,1,0], // eyes (holes)
+        [0,1,1,1,1,1,1,1,1,1,1,1,0],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1], // arms out
+        [1,1,1,1,1,1,1,1,1,1,1,1,1], // arms
+        [0,1,1,1,1,1,1,1,1,1,1,1,0],
+        [0,1,1,1,1,0,0,0,1,1,1,1,0], // legs
+        [0,1,1,1,1,0,0,0,1,1,1,1,0], // legs
     ]
 
     static var cols: Int { pixels.first?.count ?? 0 }
     static var rows: Int { pixels.count }
 
     /// Claude clay color.
-    static let clay = NSColor(calibratedRed: 0.792, green: 0.471, blue: 0.361, alpha: 1.0)
+    static let clay = NSColor(calibratedRed: 0.757, green: 0.431, blue: 0.314, alpha: 1.0)
 
     /// Render the buddy as a status-bar image at the given remaining-usage
     /// fraction (1.0 = full, 0.0 = empty). Lower fraction => more faded /
