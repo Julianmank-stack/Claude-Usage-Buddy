@@ -80,43 +80,62 @@ The app reads a remaining-usage fraction from:
 this file exists and is readable it takes priority over demo mode, and the menu
 shows **Source: live**.
 
-A helper writes it for you:
+You can set it by hand:
 
 ```bash
 ./scripts/update-usage.sh 42%     # set it directly
 ./scripts/update-usage.sh 0.42    # or as a fraction
-./scripts/update-usage.sh         # live: derive it from `ccusage`
 ```
 
-Run that on a schedule (cron, `launchd`, or a simple loop) to keep the buddy in
-sync with your real usage. The app re-checks the file every few seconds, so
-updates show up almost immediately. `install-autostart.sh` already sets up the
-`launchd` timer for you.
+…but for live updates the buddy reads your **real plan usage from claude.ai**
+(see below). Either way, the app re-checks the file every few seconds, so
+updates show up almost immediately. `install-autostart.sh` already wires up the
+`launchd` timer that refreshes it.
 
-### Live usage via ccusage
+### Live usage from claude.ai (the real plan %)
 
-With no argument, the helper reads your **Claude Code** activity through
-[`ccusage`](https://github.com/ryoppippi/ccusage). No global install is needed —
-if `ccusage` isn't on your `PATH` it's run via `npx` (so you just need Node.js),
-and the JSON is parsed with `node` (no `jq` required). It looks at ccusage's
-rolling 5-hour billing blocks and computes:
+`scripts/fetch-claude-usage.sh` reads the same data the **Settings → Usage** page
+shows, from:
 
 ```
-remaining = 1 − (tokens used in the active block ÷ limit)
+GET https://claude.ai/api/organizations/<org>/usage
 ```
 
-The limit is your heaviest *completed* block, so the buddy self-calibrates and
-fades as the current session approaches your typical peak. To pin an exact
-per-window token budget instead, set `CCUSAGE_TOKEN_LIMIT`:
+It computes `remaining = 1 − percent/100` and, by default, tracks whichever
+limit you're **closest to hitting** (smallest remaining across your 5-hour
+**session** and 7-day **weekly** limits) — so the buddy warns you about whichever
+wall is nearest. Pin one explicitly with `CLAUDE_USAGE_LIMIT=session` (or
+`weekly_all`). Your org id is auto-discovered; override with `CLAUDE_ORG_ID`.
 
-```bash
-CCUSAGE_TOKEN_LIMIT=2000000 ./scripts/update-usage.sh
-```
+**Auth — one-time setup.** The endpoint needs your logged-in `sessionKey` cookie:
 
-Note: this tracks **Claude Code token usage**, which is *not* the same as the
-plan-usage percentage shown on claude.ai's account page — there's no public API
-for that number. If ccusage lives somewhere unusual, point at it with
-`CCUSAGE_BIN`.
+1. In Chrome on **claude.ai**, open DevTools (⌥⌘I) → **Application** tab →
+   **Cookies → https://claude.ai** → copy the value of **`sessionKey`**
+   (it starts with `sk-ant-sid…`).
+2. Save it to a locked-down file:
+
+   ```bash
+   mkdir -p ~/.claude-usage-buddy
+   printf '%s' 'PASTE_SESSION_KEY_HERE' > ~/.claude-usage-buddy/session-key
+   chmod 600 ~/.claude-usage-buddy/session-key
+   ```
+
+3. Test it:
+
+   ```bash
+   ./scripts/fetch-claude-usage.sh
+   ```
+
+The key never touches the repo. It expires every so often (you'll see the
+buddy stop updating / the refresh log show an auth error) — just repeat step 1–2
+to refresh it. This uses an **undocumented** endpoint, so it may change without
+notice.
+
+> Prefer not to deal with a session key? You can instead drive the buddy from
+> your local **Claude Code** token usage via
+> [`ccusage`](https://github.com/ryoppippi/ccusage) — see this project's git
+> history for that variant — but note it measures CLI tokens, not the plan %
+> shown on the account page.
 
 ## How the fade works
 

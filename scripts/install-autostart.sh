@@ -57,9 +57,9 @@ launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST"
 
 # --- Usage refresh timer -----------------------------------------------------
-# A second agent re-derives usage from ccusage every couple of minutes and
-# writes it to the state file. The app re-reads that file every ~5s, so the
-# buddy live-updates. Runs through a login shell so ccusage/node are on PATH.
+# A second agent pulls your real plan usage from claude.ai every couple of
+# minutes and writes it to the state file. The app re-reads that file every ~5s,
+# so the buddy live-updates. Runs through a login shell so node is on PATH.
 REFRESH_LABEL="com.claudeusagebuddy.refresh"
 REFRESH_PLIST="$HOME/Library/LaunchAgents/$REFRESH_LABEL.plist"
 REFRESH_INTERVAL="${REFRESH_INTERVAL:-120}"
@@ -75,7 +75,7 @@ cat > "$REFRESH_PLIST" <<EOF
     <array>
         <string>/bin/bash</string>
         <string>-lc</string>
-        <string>exec "$REPO/scripts/update-usage.sh"</string>
+        <string>exec "$REPO/scripts/fetch-claude-usage.sh"</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -89,6 +89,12 @@ cat > "$REFRESH_PLIST" <<EOF
 </plist>
 EOF
 
+# Make sure a session key is in place; warn (don't fail) if it isn't yet.
+if [[ ! -s "$HOME/.claude-usage-buddy/session-key" && -z "${CLAUDE_SESSION_KEY:-}" ]]; then
+  echo "NOTE: no session key yet — live usage won't work until you add one."
+  echo "      See 'Live usage from claude.ai' in the README, then re-run me."
+fi
+
 launchctl unload "$REFRESH_PLIST" 2>/dev/null || true
 launchctl load "$REFRESH_PLIST"
 
@@ -96,11 +102,11 @@ echo
 echo "Installed. The buddy is running now and will start automatically at login."
 echo "Look in the top-right of your menu bar."
 echo
-echo "Usage refresh: every ${REFRESH_INTERVAL}s via ccusage (Claude Code activity)."
-echo "  - No global install needed: runs ccusage via 'npx', parses with node."
+echo "Usage refresh: every ${REFRESH_INTERVAL}s from claude.ai (your real plan usage)."
+echo "  - Auth: your claude.ai sessionKey in ~/.claude-usage-buddy/session-key (chmod 600)."
+echo "  - Tracks whichever limit you're closest to hitting; pin one with"
+echo "    CLAUDE_USAGE_LIMIT=session (or weekly_all)."
 echo "  - Logs: /tmp/claude-usage-buddy-refresh.{log,err}"
-echo "  - Pin an exact per-window token budget with the CCUSAGE_TOKEN_LIMIT env"
-echo "    var; otherwise it self-calibrates against your heaviest 5-hour block."
 echo
 echo "Because KeepAlive is on, picking 'Quit' from its menu will relaunch it."
 echo "To fully stop and remove auto-start, run: ./scripts/uninstall-autostart.sh"
