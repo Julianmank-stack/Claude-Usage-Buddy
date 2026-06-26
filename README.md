@@ -95,47 +95,40 @@ updates show up almost immediately. `install-autostart.sh` already wires up the
 ### Live usage from claude.ai (the real plan %)
 
 `scripts/fetch-claude-usage.sh` reads the same data the **Settings → Usage** page
-shows, from:
+shows, from `GET https://claude.ai/api/organizations/<org>/usage`.
 
-```
-GET https://claude.ai/api/organizations/<org>/usage
-```
+claude.ai sits behind Cloudflare, which blocks plain script requests (you'll get
+a `403 "Just a moment…"`), and the endpoint needs your login. Rather than store a
+session key and try to fake a browser, the buddy **asks your already-logged-in
+Google Chrome to make the request** from inside an open claude.ai tab (via
+AppleScript — see `scripts/claude-usage.applescript`). The fetch runs in the real
+page context, so it's authenticated and Cloudflare-cleared automatically, and
+**no credential is stored anywhere**.
 
-It computes `remaining = 1 − percent/100` and, by default, tracks whichever
-limit you're **closest to hitting** (smallest remaining across your 5-hour
-**session** and 7-day **weekly** limits) — so the buddy warns you about whichever
-wall is nearest. Pin one explicitly with `CLAUDE_USAGE_LIMIT=session` (or
-`weekly_all`). Your org id is auto-discovered; override with `CLAUDE_ORG_ID`.
+It computes `remaining = 1 − percent/100` and, by default, tracks whichever limit
+you're **closest to hitting** (smallest remaining across your 5-hour **session**
+and 7-day **weekly** limits). Pin one explicitly with `CLAUDE_USAGE_LIMIT=session`
+(or `weekly_all`). The org id is auto-discovered.
 
-**Auth — one-time setup.** The endpoint needs your logged-in `sessionKey` cookie:
+**One-time setup:**
 
-1. In Chrome on **claude.ai**, open DevTools (⌥⌘I) → **Application** tab →
-   **Cookies → https://claude.ai** → copy the value of **`sessionKey`**
-   (it starts with `sk-ant-sid…`).
-2. Save it to a locked-down file:
-
-   ```bash
-   mkdir -p ~/.claude-usage-buddy
-   printf '%s' 'PASTE_SESSION_KEY_HERE' > ~/.claude-usage-buddy/session-key
-   chmod 600 ~/.claude-usage-buddy/session-key
-   ```
-
-3. Test it:
+1. Keep **Google Chrome** running with a **claude.ai** tab open and logged in.
+2. Enable Chrome menu **View → Developer → "Allow JavaScript from Apple Events."**
+3. Run it once and approve the macOS **Automation** prompt (it asks to control
+   Chrome):
 
    ```bash
    ./scripts/fetch-claude-usage.sh
    ```
 
-The key never touches the repo. It expires every so often (you'll see the
-buddy stop updating / the refresh log show an auth error) — just repeat step 1–2
-to refresh it. This uses an **undocumented** endpoint, so it may change without
-notice.
+That prints something like `fraction=0.46 (remaining; tracking: min)`.
+`install-autostart.sh` then keeps it refreshed on a timer.
 
-> Prefer not to deal with a session key? You can instead drive the buddy from
-> your local **Claude Code** token usage via
-> [`ccusage`](https://github.com/ryoppippi/ccusage) — see this project's git
-> history for that variant — but note it measures CLI tokens, not the plan %
-> shown on the account page.
+> This relies on an **undocumented** endpoint and on a claude.ai tab being open
+> in Chrome. If you'd rather not depend on the browser, you can drive the buddy
+> from local **Claude Code** token usage via
+> [`ccusage`](https://github.com/ryoppippi/ccusage) (see this project's git
+> history) — but that measures CLI tokens, not the plan % on the account page.
 
 ## How the fade works
 

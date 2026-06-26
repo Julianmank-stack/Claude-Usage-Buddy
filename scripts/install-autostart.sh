@@ -89,12 +89,6 @@ cat > "$REFRESH_PLIST" <<EOF
 </plist>
 EOF
 
-# Make sure a session key is in place; warn (don't fail) if it isn't yet.
-if [[ ! -s "$HOME/.claude-usage-buddy/session-key" && -z "${CLAUDE_SESSION_KEY:-}" ]]; then
-  echo "NOTE: no session key yet — live usage won't work until you add one."
-  echo "      See 'Live usage from claude.ai' in the README, then re-run me."
-fi
-
 launchctl unload "$REFRESH_PLIST" 2>/dev/null || true
 launchctl load "$REFRESH_PLIST"
 
@@ -102,8 +96,11 @@ echo
 echo "Installed. The buddy is running now and will start automatically at login."
 echo "Look in the top-right of your menu bar."
 echo
-echo "Usage refresh: every ${REFRESH_INTERVAL}s from claude.ai (your real plan usage)."
-echo "  - Auth: your claude.ai sessionKey in ~/.claude-usage-buddy/session-key (chmod 600)."
+echo "Usage refresh: every ${REFRESH_INTERVAL}s from claude.ai (your real plan usage),"
+echo "read via your logged-in Chrome — no session key stored. Make sure:"
+echo "  - Chrome is running with a claude.ai tab open and logged in."
+echo "  - Chrome > View > Developer > 'Allow JavaScript from Apple Events' is ON."
+echo "  - You allow Automation control of Chrome when macOS prompts."
 echo "  - Tracks whichever limit you're closest to hitting; pin one with"
 echo "    CLAUDE_USAGE_LIMIT=session (or weekly_all)."
 echo "  - Logs: /tmp/claude-usage-buddy-refresh.{log,err}"

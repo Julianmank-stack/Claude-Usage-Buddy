@@ -1,75 +1,51 @@
 #!/usr/bin/env bash
 #
-# Live usage from claude.ai. Reads your plan's remaining usage straight from the
-# same endpoint the Settings -> Usage page uses, and writes it to the state file
-# the menu-bar buddy reads.
+# Live usage from claude.ai — without fighting Cloudflare and without storing a
+# credential. It asks your already-logged-in Google Chrome to fetch the usage
+# JSON from inside an open claude.ai tab (see claude-usage.applescript), so the
+# request is authenticated and Cloudflare-cleared by the browser itself.
 #
-#   GET https://claude.ai/api/organizations/<org>/usage
-#   -> { "limits": [ { "kind": "session", "percent": <0..100 used>, ... }, ... ] }
+# Requirements (one-time):
+#   * Google Chrome running, with a claude.ai tab open and logged in.
+#   * Chrome menu: View > Developer > "Allow JavaScript from Apple Events" = ON.
+#   * Grant Automation permission when macOS first prompts (lets this control Chrome).
 #
-# remaining = 1 - percent/100. By default we track the limit you're CLOSEST to
-# hitting (smallest remaining across all limits), so the buddy warns you about
-# whichever wall — 5-hour session or 7-day weekly — is nearest. Override with
-# CLAUDE_USAGE_LIMIT=session  (or weekly_all) to pin one.
-#
-# Auth: your claude.ai sessionKey cookie. Put it in ~/.claude-usage-buddy/session-key
-# (chmod 600) or pass it as CLAUDE_SESSION_KEY. It is never written to the repo.
+# It writes remaining usage (0..1) to ~/.claude-usage-buddy/state.json, tracking
+# whichever limit you're closest to hitting. Pin one with
+# CLAUDE_USAGE_LIMIT=session (or weekly_all).
 #
 set -euo pipefail
 
 STATE_DIR="$HOME/.claude-usage-buddy"
 STATE_FILE="$STATE_DIR/state.json"
-KEY_FILE="$STATE_DIR/session-key"
 mkdir -p "$STATE_DIR"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ERR=/tmp/claude-usage-buddy-osa.err
 
-UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) claude-usage-buddy"
-
-# --- session key -------------------------------------------------------------
-SESSION_KEY="${CLAUDE_SESSION_KEY:-}"
-if [[ -z "$SESSION_KEY" && -r "$KEY_FILE" ]]; then
-  SESSION_KEY="$(tr -d '[:space:]' < "$KEY_FILE")"
-fi
-if [[ -z "$SESSION_KEY" ]]; then
-  echo "No session key found." >&2
-  echo "Put your claude.ai sessionKey in $KEY_FILE (then: chmod 600 \"$KEY_FILE\")," >&2
-  echo "or run with CLAUDE_SESSION_KEY=... — see the README for how to copy it." >&2
+if ! command -v osascript >/dev/null 2>&1; then
+  echo "This live source needs macOS + Google Chrome (osascript not found)." >&2
   exit 1
 fi
-
 if ! command -v node >/dev/null 2>&1; then
   echo "Need Node.js to parse the response (node not found on PATH)." >&2
   exit 1
 fi
 
-claude_get() {
-  # $1 = path under https://claude.ai
-  curl -fsS "https://claude.ai$1" \
-    -H "Cookie: sessionKey=$SESSION_KEY" \
-    -H "Accept: application/json" \
-    -H "User-Agent: $UA" 2>/dev/null || true
-}
+json=$(osascript "$HERE/claude-usage.applescript" 2>"$ERR" || true)
 
-# --- org id (auto-discover so we never hardcode a personal id) ---------------
-ORG_ID="${CLAUDE_ORG_ID:-}"
-if [[ -z "$ORG_ID" ]]; then
-  orgs=$(claude_get "/api/organizations")
-  ORG_ID=$(printf '%s' "$orgs" | node -e '
-    let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
-      try { const a=JSON.parse(s); const o=Array.isArray(a)?a[0]:a;
-            if (o && o.uuid) { process.stdout.write(o.uuid); return; } } catch(e){}
-      process.exit(1);
-    });' || true)
-fi
-if [[ -z "$ORG_ID" ]]; then
-  echo "Couldn't determine your organization id (session key expired or blocked?)." >&2
-  echo "Set CLAUDE_ORG_ID to skip auto-discovery." >&2
+if [[ -z "$json" ]]; then
+  echo "Couldn't read usage from Chrome. Check that:" >&2
+  echo "  1. Chrome is running with a claude.ai tab open and logged in." >&2
+  echo "  2. Chrome > View > Developer > 'Allow JavaScript from Apple Events' is ON." >&2
+  echo "  3. You allowed Automation control of Chrome when macOS prompted." >&2
+  if [[ -s "$ERR" ]]; then echo "--- osascript said ---" >&2; cat "$ERR" >&2; fi
   exit 1
 fi
 
-# --- usage -------------------------------------------------------------------
-json=$(claude_get "/api/organizations/$ORG_ID/usage")
-if [[ -z "$json" ]]; then
-  echo "Usage request failed (expired session key, or a Cloudflare/network block)." >&2
+# Cloudflare challenge leaking through (page not actually logged in / cleared)?
+if printf '%s' "$json" | grep -qi "just a moment\|<!doctype html"; then
+  echo "Chrome returned an HTML challenge instead of JSON — open claude.ai in a" >&2
+  echo "tab, let it finish loading (past any 'Just a moment'), then retry." >&2
   exit 1
 fi
 
@@ -87,11 +63,11 @@ frac=$(printf '%s' "$json" | CLAUDE_USAGE_LIMIT="$WHICH" node -e '
       const e = limits.find(l => l.kind === which || l.group === which);
       if (e && num(e.percent)) usedPct = e.percent;
     }
-    if (usedPct === null) {                       // most-drained limit
+    if (usedPct === null) {                        // most-drained limit
       const ps = limits.filter(l => num(l.percent)).map(l => l.percent);
       if (ps.length) usedPct = Math.max(...ps);
     }
-    if (usedPct === null) {                        // top-level mirrors
+    if (usedPct === null) {                         // top-level mirrors
       const m = [j.five_hour, j.seven_day].filter(o => o && num(o.utilization)).map(o => o.utilization);
       if (m.length) usedPct = Math.max(...m);
     }
@@ -102,7 +78,8 @@ frac=$(printf '%s' "$json" | CLAUDE_USAGE_LIMIT="$WHICH" node -e '
   });') || true
 
 if [[ -z "$frac" ]]; then
-  echo "Got a response but couldn't find a usage percent in it." >&2
+  echo "Got a response from claude.ai but couldn't find a usage percent in it." >&2
+  echo "First 200 chars: $(printf '%s' "$json" | head -c 200)" >&2
   exit 1
 fi
 
