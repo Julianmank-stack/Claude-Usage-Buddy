@@ -62,7 +62,8 @@ launchctl load "$PLIST"
 # so the buddy live-updates. Runs through a login shell so node is on PATH.
 REFRESH_LABEL="com.claudeusagebuddy.refresh"
 REFRESH_PLIST="$HOME/Library/LaunchAgents/$REFRESH_LABEL.plist"
-REFRESH_INTERVAL="${REFRESH_INTERVAL:-120}"
+REFRESH_INTERVAL="${REFRESH_INTERVAL:-10}"
+USAGE_LIMIT="${CLAUDE_USAGE_LIMIT:-session}"
 
 cat > "$REFRESH_PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -77,6 +78,11 @@ cat > "$REFRESH_PLIST" <<EOF
         <string>-lc</string>
         <string>exec "$REPO/scripts/fetch-claude-usage.sh"</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>CLAUDE_USAGE_LIMIT</key>
+        <string>$USAGE_LIMIT</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>StartInterval</key>
@@ -101,8 +107,7 @@ echo "read via your logged-in Chrome — no session key stored. Make sure:"
 echo "  - Chrome is running with a claude.ai tab open and logged in."
 echo "  - Chrome > View > Developer > 'Allow JavaScript from Apple Events' is ON."
 echo "  - You allow Automation control of Chrome when macOS prompts."
-echo "  - Tracks whichever limit you're closest to hitting; pin one with"
-echo "    CLAUDE_USAGE_LIMIT=session (or weekly_all)."
+echo "  - Tracking limit: $USAGE_LIMIT (override with CLAUDE_USAGE_LIMIT, e.g. weekly_all or min)."
 echo "  - Logs: /tmp/claude-usage-buddy-refresh.{log,err}"
 echo
 echo "Because KeepAlive is on, picking 'Quit' from its menu will relaunch it."
