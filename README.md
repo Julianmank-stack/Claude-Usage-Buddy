@@ -103,7 +103,8 @@ session key and try to fake a browser, the buddy **asks your already-logged-in
 Google Chrome to make the request** from inside an open claude.ai tab (via
 AppleScript — see `scripts/claude-usage.applescript`). The fetch runs in the real
 page context, so it's authenticated and Cloudflare-cleared automatically, and
-**no credential is stored anywhere**.
+**no credential is stored anywhere**. The percent math runs inside the page too,
+so there are no local dependencies beyond macOS and Chrome (no Node, no jq).
 
 It computes `remaining = 1 − percent/100` and, by default, tracks whichever limit
 you're **closest to hitting** (smallest remaining across your 5-hour **session**

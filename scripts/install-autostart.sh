@@ -59,7 +59,7 @@ launchctl load "$PLIST"
 # --- Usage refresh timer -----------------------------------------------------
 # A second agent pulls your real plan usage from claude.ai every couple of
 # minutes and writes it to the state file. The app re-reads that file every ~5s,
-# so the buddy live-updates. Runs through a login shell so node is on PATH.
+# so the buddy live-updates. No local dependencies beyond macOS + Chrome.
 REFRESH_LABEL="com.claudeusagebuddy.refresh"
 REFRESH_PLIST="$HOME/Library/LaunchAgents/$REFRESH_LABEL.plist"
 REFRESH_INTERVAL="${REFRESH_INTERVAL:-10}"
