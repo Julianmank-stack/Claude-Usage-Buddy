@@ -9,11 +9,14 @@ faint, tired ghost — a quick glance tells you how much you've got left.
 
 ## What it looks like
 
-- Lives in the macOS menu bar (no Dock icon, no window).
+- Lives in the macOS menu bar (no Dock icon, no main window).
 - A little pixel-art Claude buddy — the rounded clay creature with two eyes and
   stubby legs — in Claude's clay color.
 - Opacity tracks remaining usage; it also drifts slightly gray as it empties.
 - Click it for a menu showing the exact percentage and the data source.
+- **Live usage is built in**: the app itself fetches your real plan usage from
+  claude.ai (log in once from the menu). It counts everything that drains your
+  plan — web, **Claude Desktop**, mobile — because the limits are account-wide.
 
 ## Requirements
 
@@ -27,9 +30,10 @@ faint, tired ghost — a quick glance tells you how much you've got left.
 swift run
 ```
 
-That launches the buddy into your menu bar. Out of the box it runs in **Demo
-drain** mode — a slow drain-and-refill cycle so you can immediately watch the
-fade effect. Toggle it off from the menu once you wire up live data.
+That launches the buddy into your menu bar. Click it → **"Log in to
+claude.ai…"** and sign in once; the buddy then shows your real remaining plan
+usage and refreshes every 10 seconds on its own. (There's also a **Demo drain**
+toggle in the menu — a drain-and-refill loop for watching the fade effect.)
 
 To build a release binary:
 
@@ -47,11 +51,11 @@ relaunching itself if it ever quits:
 ./scripts/install-autostart.sh
 ```
 
-This builds a release binary and installs two `launchd` LaunchAgents:
-
-- `com.claudeusagebuddy.agent` — the buddy itself (`RunAtLoad` + `KeepAlive`).
-- `com.claudeusagebuddy.refresh` — re-derives your usage every couple of
-  minutes (see below) so the buddy live-updates.
+This builds a release binary and installs one `launchd` LaunchAgent
+(`com.claudeusagebuddy.agent`, `RunAtLoad` + `KeepAlive`). Live usage needs no
+second agent — the app fetches it itself. The agent pins the tracked limit to
+the 5-hour **session** window; re-run with `CLAUDE_USAGE_LIMIT=weekly_all` (or
+`min` for "whichever limit is closest to its cap") to change that.
 
 To stop everything and remove auto-start:
 
@@ -62,74 +66,41 @@ To stop everything and remove auto-start:
 (Because `KeepAlive` is on, choosing **Quit** from the menu just relaunches it —
 use the uninstall script to fully stop it.)
 
-## Feeding it real usage
+## How live usage works (built in)
 
-The app reads a remaining-usage fraction from:
+The app embeds a hidden **WebKit web view** logged into claude.ai. Every 10
+seconds it fetches the same data the **Settings → Usage** page shows
+(`GET https://claude.ai/api/organizations/<org>/usage`) from *inside* that
+page context — so the request is authenticated by the web view's own persistent
+cookies and passes Cloudflare like any real browser. No external browser, no
+stored session key, no dependencies beyond macOS.
+
+- **Log in once**: click the buddy → **"Log in to claude.ai…"** → sign in →
+  close the window. The session persists across restarts. If it ever expires,
+  the menu shows **⚠️ Log in to claude.ai…** again.
+- **What it counts**: your plan limits are **account-wide**, so usage from the
+  website, **Claude Desktop**, mobile, and Claude Code all show up in the same
+  number automatically.
+- **Which limit**: `remaining = 1 − percent/100`, tracking the 5-hour
+  **session** window by default. Set the env var `CLAUDE_USAGE_LIMIT` to
+  `weekly_all` (7-day) or `min` (whichever limit is closest to its cap).
+- **Staleness is visible**: if a refresh hasn't succeeded for over ~90 seconds,
+  the menu source line switches to **STALE — N min old** instead of silently
+  freezing.
+
+> This uses an **undocumented** endpoint, so it may change without notice.
+
+### Manual override / other sources
+
+If the built-in fetcher has no reading, the app falls back to a state file:
 
 ```
-~/.claude-usage-buddy/state.json
+~/.claude-usage-buddy/state.json     # {"fraction": 0.42} or {"percent": 42}
 ```
 
-…which is just:
-
-```json
-{ "fraction": 0.42 }
-```
-
-`fraction` is `0.0` (empty) → `1.0` (full). `{"percent": 42}` works too. While
-this file exists and is readable it takes priority over demo mode, and the menu
-shows **Source: live**.
-
-You can set it by hand:
-
-```bash
-./scripts/update-usage.sh 42%     # set it directly
-./scripts/update-usage.sh 0.42    # or as a fraction
-```
-
-…but for live updates the buddy reads your **real plan usage from claude.ai**
-(see below). Either way, the app re-checks the file every few seconds, so
-updates show up almost immediately. `install-autostart.sh` already wires up the
-`launchd` timer that refreshes it.
-
-### Live usage from claude.ai (the real plan %)
-
-`scripts/fetch-claude-usage.sh` reads the same data the **Settings → Usage** page
-shows, from `GET https://claude.ai/api/organizations/<org>/usage`.
-
-claude.ai sits behind Cloudflare, which blocks plain script requests (you'll get
-a `403 "Just a moment…"`), and the endpoint needs your login. Rather than store a
-session key and try to fake a browser, the buddy **asks your already-logged-in
-Google Chrome to make the request** from inside an open claude.ai tab (via
-AppleScript — see `scripts/claude-usage.applescript`). The fetch runs in the real
-page context, so it's authenticated and Cloudflare-cleared automatically, and
-**no credential is stored anywhere**. The percent math runs inside the page too,
-so there are no local dependencies beyond macOS and Chrome (no Node, no jq).
-
-It computes `remaining = 1 − percent/100` and, by default, tracks whichever limit
-you're **closest to hitting** (smallest remaining across your 5-hour **session**
-and 7-day **weekly** limits). Pin one explicitly with `CLAUDE_USAGE_LIMIT=session`
-(or `weekly_all`). The org id is auto-discovered.
-
-**One-time setup:**
-
-1. Keep **Google Chrome** running with a **claude.ai** tab open and logged in.
-2. Enable Chrome menu **View → Developer → "Allow JavaScript from Apple Events."**
-3. Run it once and approve the macOS **Automation** prompt (it asks to control
-   Chrome):
-
-   ```bash
-   ./scripts/fetch-claude-usage.sh
-   ```
-
-That prints something like `fraction=0.46 (remaining; tracking: min)`.
-`install-autostart.sh` then keeps it refreshed on a timer.
-
-> This relies on an **undocumented** endpoint and on a claude.ai tab being open
-> in Chrome. If you'd rather not depend on the browser, you can drive the buddy
-> from local **Claude Code** token usage via
-> [`ccusage`](https://github.com/ryoppippi/ccusage) (see this project's git
-> history) — but that measures CLI tokens, not the plan % on the account page.
+Set it by hand with `./scripts/update-usage.sh 42%` (or `0.42`), or write it
+from any script of your own. Older Chrome/AppleScript-based fetchers live in
+`scripts/legacy/` if you prefer driving the file externally.
 
 ## How the fade works
 

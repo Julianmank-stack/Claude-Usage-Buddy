@@ -4,6 +4,9 @@
 #   * starts automatically every time you log in, and
 #   * relaunches itself if it ever quits — so it's *always* in your menu bar.
 #
+# The app fetches your real plan usage from claude.ai by itself (built-in web
+# view — log in once from the buddy's menu). No other agents or dependencies.
+#
 # Run once:
 #   ./scripts/install-autostart.sh
 #
@@ -16,6 +19,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="$REPO/.build/release/ClaudeUsageBuddy"
 LABEL="com.claudeusagebuddy.agent"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+USAGE_LIMIT="${CLAUDE_USAGE_LIMIT:-session}"
 
 echo "Building the release binary…"
 ( cd "$REPO" && swift build -c release )
@@ -38,6 +42,11 @@ cat > "$PLIST" <<EOF
     <array>
         <string>$BIN</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>CLAUDE_USAGE_LIMIT</key>
+        <string>$USAGE_LIMIT</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
@@ -52,63 +61,27 @@ cat > "$PLIST" <<EOF
 </plist>
 EOF
 
-# (Re)load it. Unload first so re-running this script picks up a new binary path.
+# Migration: earlier versions used a separate refresh-timer agent that drove
+# usage via Chrome/AppleScript. The app now fetches by itself — remove it.
+OLD_REFRESH="$HOME/Library/LaunchAgents/com.claudeusagebuddy.refresh.plist"
+if [[ -f "$OLD_REFRESH" ]]; then
+  launchctl unload "$OLD_REFRESH" 2>/dev/null || true
+  rm -f "$OLD_REFRESH"
+  echo "Removed the old Chrome-based refresh agent (no longer needed)."
+fi
+
+# (Re)load it. Unload first so re-running this script picks up a new binary.
 launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST"
-
-# --- Usage refresh timer -----------------------------------------------------
-# A second agent pulls your real plan usage from claude.ai every couple of
-# minutes and writes it to the state file. The app re-reads that file every ~5s,
-# so the buddy live-updates. No local dependencies beyond macOS + Chrome.
-REFRESH_LABEL="com.claudeusagebuddy.refresh"
-REFRESH_PLIST="$HOME/Library/LaunchAgents/$REFRESH_LABEL.plist"
-REFRESH_INTERVAL="${REFRESH_INTERVAL:-10}"
-USAGE_LIMIT="${CLAUDE_USAGE_LIMIT:-session}"
-
-cat > "$REFRESH_PLIST" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>$REFRESH_LABEL</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/bin/bash</string>
-        <string>-lc</string>
-        <string>exec "$REPO/scripts/fetch-claude-usage.sh"</string>
-    </array>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>CLAUDE_USAGE_LIMIT</key>
-        <string>$USAGE_LIMIT</string>
-    </dict>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>StartInterval</key>
-    <integer>$REFRESH_INTERVAL</integer>
-    <key>StandardOutPath</key>
-    <string>/tmp/claude-usage-buddy-refresh.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/claude-usage-buddy-refresh.err</string>
-</dict>
-</plist>
-EOF
-
-launchctl unload "$REFRESH_PLIST" 2>/dev/null || true
-launchctl load "$REFRESH_PLIST"
 
 echo
 echo "Installed. The buddy is running now and will start automatically at login."
 echo "Look in the top-right of your menu bar."
 echo
-echo "Usage refresh: every ${REFRESH_INTERVAL}s from claude.ai (your real plan usage),"
-echo "read via your logged-in Chrome — no session key stored. Make sure:"
-echo "  - Chrome is running with a claude.ai tab open and logged in."
-echo "  - Chrome > View > Developer > 'Allow JavaScript from Apple Events' is ON."
-echo "  - You allow Automation control of Chrome when macOS prompts."
-echo "  - Tracking limit: $USAGE_LIMIT (override with CLAUDE_USAGE_LIMIT, e.g. weekly_all or min)."
-echo "  - Logs: /tmp/claude-usage-buddy-refresh.{log,err}"
+echo "Live usage is built in: click the buddy -> 'Log in to claude.ai…' and sign"
+echo "in once. The buddy then refreshes every 10s on its own — no Chrome needed."
+echo "  - Tracking limit: $USAGE_LIMIT (re-run with CLAUDE_USAGE_LIMIT=weekly_all or min to change)."
+echo "  - Logs: /tmp/claude-usage-buddy.{log,err}"
 echo
 echo "Because KeepAlive is on, picking 'Quit' from its menu will relaunch it."
 echo "To fully stop and remove auto-start, run: ./scripts/uninstall-autostart.sh"
